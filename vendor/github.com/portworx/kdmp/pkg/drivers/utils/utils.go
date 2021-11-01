@@ -166,11 +166,14 @@ func ResticExecutorImageSecret() string {
 
 // KopiaExecutorImage returns a docker image that contains kopiaexecutor binary.
 func KopiaExecutorImage() string {
+	/*
 	if customImage := strings.TrimSpace(GetConfigValue(drivers.KopiaExecutorImageKey)); customImage != "" {
 		return customImage
 	}
 	// use a versioned docker image
 	return strings.Join([]string{drivers.KopiaExecutorImage, version.Get().GitVersion}, ":")
+	*/
+	return "sivaportworx/kopiaexecutor:latest"
 }
 
 // KopiaExecutorImageSecret returns an image pull secret for the resticexecutor image.
