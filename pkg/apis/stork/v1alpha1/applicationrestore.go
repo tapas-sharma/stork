@@ -26,6 +26,7 @@ type ApplicationRestore struct {
 type ApplicationRestoreSpec struct {
 	BackupName                   string                              `json:"backupName"`
 	BackupLocation               string                              `json:"backupLocation"`
+	BackupLocationNamespace      string                              `json:"backupLocationNamespace"`
 	NamespaceMapping             map[string]string                   `json:"namespaceMapping"`
 	ReplacePolicy                ApplicationRestoreReplacePolicyType `json:"replacePolicy"`
 	IncludeOptionalResourceTypes []string                            `json:"includeOptionalResourceTypes"`
