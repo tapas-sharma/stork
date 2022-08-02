@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/portworx/kdmp/pkg/drivers"
 	"github.com/portworx/kdmp/pkg/drivers/utils"
@@ -221,6 +222,22 @@ func (d Driver) JobStatus(id string) (*drivers.JobStatus, error) {
 			if utils.IsJobPending(job) {
 				logrus.Warnf("backup job %s is in pending state", job.Name)
 				return utils.ToJobStatus(0, "", jobStatus), nil
+			} else {
+				maxRetry := 12
+				retrySleep := 5 * time.Second
+				for i := 0; i < maxRetry; i++ {
+					logrus.Warnf("job is not in pending state but volumebackup %s/%s is not created - retry %v", namespace, name, i)
+					vb, err1 := kdmpops.Instance().GetVolumeBackup(context.Background(), name, namespace)
+					if err1 != nil && apierrors.IsNotFound(err1) {
+						time.Sleep(retrySleep)
+						continue
+					} else if err1 != nil {
+						logrus.Errorf("error while fetching volumebackup %s/%s status: %v", namespace, name, err1)
+						break
+					} else {
+						return utils.ToJobStatus(vb.Status.ProgressPercentage, vb.Status.LastKnownError, jobStatus), nil
+					}
+				}
 			}
 		}
 		errMsg := fmt.Sprintf("failed to fetch volumebackup %s/%s status: %v", namespace, name, err)
@@ -282,13 +299,6 @@ func jobFor(
 		logrus.Errorf("jobFor: getting kopia image registry and image secret failed during backup: %v", err)
 		return nil, err
 	}
-	if len(imageRegistrySecret) != 0 {
-		err = utils.CreateImageRegistrySecret(imageRegistrySecret, jobName, jobOption.KopiaImageExecutorSourceNs, jobOption.Namespace)
-		if err != nil {
-			return nil, err
-		}
-
-	}
 	var kopiaExecutorImage string
 	if len(imageRegistry) != 0 {
 		kopiaExecutorImage = fmt.Sprintf("%s/%s", imageRegistry, utils.GetKopiaExecutorImageName())
@@ -313,7 +323,7 @@ func jobFor(
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyOnFailure,
-					ImagePullSecrets:   utils.ToImagePullSecret(utils.GetImageSecretName(jobName)),
+					ImagePullSecrets:   utils.ToImagePullSecret(imageRegistrySecret),
 					ServiceAccountName: jobName,
 					Containers: []corev1.Container{
 						{
@@ -353,7 +363,7 @@ func jobFor(
 							Name: "cred-secret",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: utils.GetCredSecretName(jobOption.DataExportName),
+									SecretName: jobOption.DataExportName,
 								},
 							},
 						},
