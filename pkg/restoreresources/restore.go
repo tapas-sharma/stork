@@ -93,12 +93,12 @@ func (r *RestoreController) DownloadApplyResources(restore *storkapi.Application
 	}
 
 	if restoreLocation.Location.Type != storkapi.BackupLocationNFS {
-		objects, err := r.downloadResources(backup, restore.Spec.BackupLocation, restore.Namespace)
+		objects, err := r.DownloadResources(backup, restore.Spec.BackupLocation, restore.Namespace)
 		if err != nil {
 			log.ApplicationRestoreLog(restore).Errorf("Error downloading resources: %v", err)
 			return err
 		}
-		if err := r.applyResources(restore, objects); err != nil {
+		if err := r.ApplyResources(restore, objects); err != nil {
 			return err
 		}
 	} else {
@@ -108,7 +108,7 @@ func (r *RestoreController) DownloadApplyResources(restore *storkapi.Application
 	return err
 }
 
-func (r *RestoreController) downloadResources(
+func (r *RestoreController) DownloadResources(
 	backup *storkapi.ApplicationBackup,
 	backupLocation string,
 	namespace string,
@@ -117,7 +117,7 @@ func (r *RestoreController) downloadResources(
 	if err := r.downloadCRD(backup, backupLocation, namespace); err != nil {
 		return nil, fmt.Errorf("error downloading CRDs: %v", err)
 	}
-	data, err := r.downloadObject(backup, backupLocation, namespace, resourceObjectName, false)
+	data, err := r.DownloadObject(backup, backupLocation, namespace, resourceObjectName, false)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (r *RestoreController) downloadCRD(
 ) error {
 	var crds []*apiextensionsv1beta1.CustomResourceDefinition
 	var crdsV1 []*apiextensionsv1.CustomResourceDefinition
-	crdData, err := r.downloadObject(backup, backupLocation, namespace, crdObjectName, true)
+	crdData, err := r.DownloadObject(backup, backupLocation, namespace, crdObjectName, true)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func (r *RestoreController) downloadCRD(
 	return nil
 }
 
-func (r *RestoreController) downloadObject(
+func (r *RestoreController) DownloadObject(
 	backup *storkapi.ApplicationBackup,
 	backupLocation string,
 	namespace string,
@@ -263,7 +263,7 @@ func (r *RestoreController) downloadObject(
 	return data, nil
 }
 
-func (r *RestoreController) applyResources(
+func (r *RestoreController) ApplyResources(
 	restore *storkapi.ApplicationRestore,
 	objects []runtime.Unstructured,
 ) error {
@@ -337,7 +337,7 @@ func (r *RestoreController) applyResources(
 		}
 
 		if err != nil {
-			if err := r.updateResourceStatus(
+			if err := r.UpdateResourceStatus(
 				restore,
 				o,
 				storkapi.ApplicationRestoreStatusFailed,
@@ -346,7 +346,7 @@ func (r *RestoreController) applyResources(
 				return err
 			}
 		} else if retained {
-			if err := r.updateResourceStatus(
+			if err := r.UpdateResourceStatus(
 				restore,
 				o,
 				storkapi.ApplicationRestoreStatusRetained,
@@ -355,7 +355,7 @@ func (r *RestoreController) applyResources(
 				return err
 			}
 		} else {
-			if err := r.updateResourceStatus(
+			if err := r.UpdateResourceStatus(
 				restore,
 				o,
 				storkapi.ApplicationRestoreStatusSuccessful,
@@ -546,7 +546,7 @@ func getPVCToPVMapping(allObjects []runtime.Unstructured) (map[string]*v1.Persis
 	return pvcNameToPV, nil
 }
 
-func (a *RestoreController) updateResourceStatus(
+func (a *RestoreController) UpdateResourceStatus(
 	restore *storkapi.ApplicationRestore,
 	object runtime.Unstructured,
 	status storkapi.ApplicationRestoreStatusType,
