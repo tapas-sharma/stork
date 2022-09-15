@@ -18,6 +18,7 @@ import (
 	"github.com/libopenstorage/stork/pkg/log"
 	"github.com/libopenstorage/stork/pkg/objectstore"
 	"github.com/libopenstorage/stork/pkg/resourcecollector"
+	restorepackage "github.com/libopenstorage/stork/pkg/restoreresources"
 	"github.com/libopenstorage/stork/pkg/version"
 	"github.com/portworx/sched-ops/k8s/apiextensions"
 	"github.com/portworx/sched-ops/k8s/core"
@@ -1231,21 +1232,51 @@ func (a *ApplicationRestoreController) applyResources(
 func (a *ApplicationRestoreController) restoreResources(
 	restore *storkapi.ApplicationRestore,
 ) error {
+	// check if the backuplocaion is nfs
 	backup, err := storkops.Instance().GetApplicationBackup(restore.Spec.BackupName, restore.Namespace)
 	if err != nil {
 		log.ApplicationRestoreLog(restore).Errorf("Error getting backup: %v", err)
 		return err
 	}
-
-	objects, err := a.downloadResources(backup, restore.Spec.BackupLocation, restore.Namespace)
+	restoreLocation, err := storkops.Instance().GetBackupLocation(backup.Spec.BackupLocation, restore.Namespace)
 	if err != nil {
-		log.ApplicationRestoreLog(restore).Errorf("Error downloading resources: %v", err)
 		return err
 	}
 
-	if err := a.applyResources(restore, objects); err != nil {
-		return err
+	if restoreLocation.Location.Type != storkapi.BackupLocationNFS {
+		r := restorepackage.NewRestoreController(a.client, a.recorder, a.resourceCollector, a.dynamicInterface, a.restoreAdminNamespace)
+
+		err = r.DownloadApplyResources(restore, nil)
+		if err != nil {
+			return err
+		}
+	} else {
+		logrus.Infof("Job related implementation need to be done here")
 	}
+
+	/*
+		backup, err := storkops.Instance().GetApplicationBackup(restore.Spec.BackupName, restore.Namespace)
+		if err != nil {
+			log.ApplicationRestoreLog(restore).Errorf("Error getting backup: %v", err)
+			return err
+		}
+
+		objects, err := a.downloadResources(backup, restore.Spec.BackupLocation, restore.Namespace)
+		if err != nil {
+			log.ApplicationRestoreLog(restore).Errorf("Error downloading resources: %v", err)
+			return err
+		}
+
+		if err := a.applyResources(restore, objects); err != nil {
+			return err
+		}
+	*/
+
+	if restoreLocation.Location.Type == storkapi.BackupLocationNFS {
+		logrus.Infof("Updating resource status to application restore")
+		//updateStatusInRestoreCRFromResourceExportCR()
+	}
+
 	// Before  updating to final stage, cleanup generic backup CRs, if any.
 	err = a.cleanupResources(restore)
 	if err != nil {
