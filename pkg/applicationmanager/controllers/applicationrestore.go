@@ -20,9 +20,11 @@ import (
 	"github.com/libopenstorage/stork/pkg/resourcecollector"
 	"github.com/libopenstorage/stork/pkg/version"
 	"github.com/portworx/sched-ops/k8s/apiextensions"
+	appops "github.com/portworx/sched-ops/k8s/apps"
 	"github.com/portworx/sched-ops/k8s/core"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
 	"github.com/sirupsen/logrus"
+	appv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
@@ -1172,6 +1174,7 @@ func (a *ApplicationRestoreController) applyResources(
 		}
 	}
 
+	verifyObjects := make([]runtime.Unstructured, 1)
 	for _, o := range objects {
 		metadata, err := meta.Accessor(o)
 		if err != nil {
@@ -1197,6 +1200,11 @@ func (a *ApplicationRestoreController) applyResources(
 				retained = true
 				err = nil
 			}
+		}
+
+		// Skip PVs, we will let the PVC handle PV deletion where needed
+		if objectType.GetKind() != "StatefulSet" || objectType.GetKind() != "Deployment" {
+			verifyObjects = append(tempObjects, o)
 		}
 
 		if err != nil {
@@ -1225,7 +1233,90 @@ func (a *ApplicationRestoreController) applyResources(
 			}
 		}
 	}
+
+	if validation, ok := restore.Annotations["portworx.io/validate"]; ok {
+		logrus.Infof("restore %s/%s has been scheduled for verify with validate %v", restore.Namespace, restore.Name, validation)
+		if validation == "true" {
+			logrus.Infof("restore %s/%s has been scheduled for verify", restore.Namespace, restore.Name)
+			err := a.validateRestore(restore, verifyObjects)
+			if err != nil {
+				logrus.Errorf("restore %s/%s failed in verification", restore.Namespace, restore.Name)
+				restore.Annotations["portworx.io/validated"] = "false"
+			}
+			restore.Annotations["portworx.io/validated"] = "true"
+		}
+	}
 	return nil
+}
+
+func (a *ApplicationRestoreController) validateRestore(restore *storkapi.ApplicationRestore, validateObjects []runtime.Unstructured) error {
+
+	for _, o := range validateObjects {
+		objectType, err := meta.TypeAccessor(o)
+		if err != nil {
+			return err
+		}
+		logrus.Infof("object kind for verification is %v", objectType.GetKind())
+		if objectType.GetKind() == "StatefulSet" {
+			sts := &appv1.StatefulSet{}
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(o.UnstructuredContent(), sts); err != nil {
+				return fmt.Errorf("error converting to statefulset: %v", err)
+			}
+			err = a.WaitForRunningAndReadySts(sts)
+			if err != nil {
+				return err
+			}
+		}
+
+		if objectType.GetKind() == "Deployment" {
+			deployment := &appv1.Deployment{}
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(o.UnstructuredContent(), deployment); err != nil {
+				return fmt.Errorf("error converting to deployment: %v", err)
+			}
+			err = a.WaitForRunningAndReadyDeployment(deployment)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (a *ApplicationRestoreController) WaitForRunningAndReadySts(sts *appv1.StatefulSet) error {
+	maxRetry := 600
+	msg := ""
+	for i := 0; i < maxRetry; i++ {
+		deployedSts, err := appops.Instance().GetStatefulSet(sts.Name, sts.Namespace)
+		if err != nil {
+			return err
+		}
+		msg = fmt.Sprintf("expected replicas for statefulset %s is %d, got %d", deployedSts.Name, *deployedSts.Spec.Replicas, deployedSts.Status.ReadyReplicas)
+		logrus.Infof(msg)
+		if deployedSts.Status.ReadyReplicas == *deployedSts.Spec.Replicas {
+			return nil
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return fmt.Errorf(msg)
+}
+
+func (a *ApplicationRestoreController) WaitForRunningAndReadyDeployment(deployment *appv1.Deployment) error {
+
+	maxRetry := 600
+	msg := ""
+	for i := 0; i < maxRetry; i++ {
+		deploymentObject, err := appops.Instance().GetStatefulSet(deployment.Name, deployment.Namespace)
+		if err != nil {
+			return err
+		}
+		msg = fmt.Sprintf("expected replicas for deployment %s is %d, got %d", deploymentObject.Name, *deploymentObject.Spec.Replicas, deploymentObject.Status.ReadyReplicas)
+		logrus.Infof(msg)
+		if deploymentObject.Status.ReadyReplicas == *deploymentObject.Spec.Replicas {
+			return nil
+		}
+	}
+	return fmt.Errorf(msg)
 }
 
 func (a *ApplicationRestoreController) restoreResources(
