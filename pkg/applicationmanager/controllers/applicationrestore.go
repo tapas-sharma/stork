@@ -279,16 +279,28 @@ func (a *ApplicationRestoreController) handle(ctx context.Context, restore *stor
 		return nil
 	}
 
-	/* TODO: Temp disabling it, would move to nfs path with restore vol changes
-	err = a.verifyNamespaces(restore)
+	backup, err := storkops.Instance().GetApplicationBackup(restore.Spec.BackupName, restore.Namespace)
 	if err != nil {
-		log.ApplicationRestoreLog(restore).Errorf(err.Error())
-		a.recorder.Event(restore,
-			v1.EventTypeWarning,
-			string(storkapi.ApplicationRestoreStatusFailed),
-			err.Error())
-		return nil
-	}*/
+		log.ApplicationRestoreLog(restore).Errorf("Error getting backup: %v", err)
+		return err
+	}
+
+	nfs, err := IsNFSBackuplocationType(backup)
+	if err != nil {
+		logrus.Errorf("error in checking backuplocation type")
+	}
+
+	if !nfs {
+		err = a.verifyNamespaces(restore)
+		if err != nil {
+			log.ApplicationRestoreLog(restore).Errorf(err.Error())
+			a.recorder.Event(restore,
+				v1.EventTypeWarning,
+				string(storkapi.ApplicationRestoreStatusFailed),
+				err.Error())
+			return nil
+		}
+	}
 
 	switch restore.Status.Stage {
 	case storkapi.ApplicationRestoreStageInitial:
@@ -1324,6 +1336,7 @@ func (a *ApplicationRestoreController) restoreResources(
 				}
 				resourceExport.Spec.Source = *source
 				resourceExport.Spec.Destination = *destination
+				resourceExport.Spec.AdminNamespace = a.restoreAdminNamespace
 				_, err = kdmpShedOps.Instance().CreateResourceExport(resourceExport)
 				if err != nil {
 					logrus.Errorf("failed to create DataExport CR: %v", err)
