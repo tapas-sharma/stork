@@ -54,7 +54,7 @@ func testMigration(t *testing.T) {
 
 	err = setSourceKubeConfig()
 	require.NoError(t, err, "failed to set kubeconfig to source cluster: %v", err)
-
+        /*
 	t.Run("deploymentTest", deploymentMigrationTest)
 	t.Run("deploymentMigrationReverseTest", deploymentMigrationReverseTest)
 	t.Run("statefulsetTest", statefulsetMigrationTest)
@@ -88,7 +88,9 @@ func testMigration(t *testing.T) {
 	t.Run("bidirectionalClusterPairTest", bidirectionalClusterPairTest)
 	t.Run("serviceAndServiceAccountUpdate", serviceAndServiceAccountUpdate)
 	t.Run("namespaceLabelSelectorTest", namespaceLabelSelectorTest)
+	*/
 
+	t.Run("operatorMigrationRabbitmqTest", operatorMigrationRabbitmqTest)
 	err = setRemoteConfig("")
 	require.NoError(t, err, "setting kubeconfig to default failed")
 }

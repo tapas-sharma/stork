@@ -1,0 +1,10 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmqcluster-sample
+  namespace: rabbitmq-system
+spec:
+  replicas: 3
+  persistence:
+    storageClassName: rabbitmq-sc
+    storage: 10Gi
