@@ -816,7 +816,7 @@ func scheduleBidirectionalClusterPair(cpName, cpNamespace, projectMappings strin
 	// Create source --> destination and destination --> cluster pairs using storkctl
 	factory := storkctl.NewFactory()
 	cmd := storkctl.NewCommand(factory, os.Stdin, os.Stdout, os.Stderr)
-	cmd.SetArgs([]string{"create", "clusterpair", "-n", cpNamespace, cpName,
+	cmdArgs := []string{"create", "clusterpair", "-n", cpNamespace, cpName,
 		"--src-kube-file", srcKubeconfigPath,
 		"--src-ip", srcInfo[clusterIP],
 		"--src-token", srcInfo[tokenKey],
@@ -824,8 +824,64 @@ func scheduleBidirectionalClusterPair(cpName, cpNamespace, projectMappings strin
 		"--dest-ip", destInfo[clusterIP],
 		"--dest-token", destInfo[tokenKey],
 		"--project-mappings", projectMappings,
-	})
+	}
 
+	// Get external object store details and append to the command accordingily
+	var objectStoreArgs []string
+	// Read the configmap secret-config in default namespace and based on the secret type , create the bidirectional pair
+	cmData, err := core.Instance().GetConfigMap("secret-config", "default")
+	if err != nil {
+		return fmt.Errorf("error getting configmap secret-config in defaule namespace")
+	}
+
+	if secretName, ok := cmData.Data["s3"]; ok {
+		secretData, err := core.Instance().GetSecret(secretName, "default")
+		//secretData, err := client.CoreV1().Secrets().Get(context.TODO(), "s3secret", metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("error getting s3secret in default namespace: %v", err)
+		}
+		objectStoreArgs = append(objectStoreArgs,
+			[]string{"--provider", "s3",
+				"--s3-access-key", string(secretData.Data["accessKeyID"]),
+				"--s3-secret-key", string(secretData.Data["secretAccessKey"]),
+				"--s3-region", string(secretData.Data["region"]),
+				"--s3-endpoint", string(secretData.Data["endpoint"]),
+			}...)
+		if val, ok := secretData.Data["disableSSL"]; ok && string(val) == "true" {
+			objectStoreArgs = append(objectStoreArgs, "--disable-ssl")
+		}
+		if val, ok := secretData.Data["encryptionKey"]; ok && len(val) > 0 {
+			objectStoreArgs = append(objectStoreArgs, "--encryption-key")
+			objectStoreArgs = append(objectStoreArgs, string(val))
+		}
+	} else if secretName, ok := cmData.Data["azure"]; ok {
+		secretData, err := core.Instance().GetSecret(secretName, "default")
+		if err != nil {
+			return fmt.Errorf("error getting azuresecret in default namespace: %v", err)
+		}
+		objectStoreArgs = append(objectStoreArgs,
+			[]string{"--provider", "azure", "--azure-account-name", string(secretData.Data["storageAccountName"]),
+				"--azure-account-key", string(secretData.Data["storageAccountKey"])}...)
+		if val, ok := secretData.Data["encryptionKey"]; ok && len(val) > 0 {
+			objectStoreArgs = append(objectStoreArgs, "--encryption-key")
+			objectStoreArgs = append(objectStoreArgs, string(val))
+		}
+	} else if secretName, ok := cmData.Data["google"]; ok {
+		secretData, err := core.Instance().GetSecret(secretName, "default")
+		if err != nil {
+			return fmt.Errorf("error getting gcpsecret in default namespace: %v", err)
+		}
+		objectStoreArgs = append(objectStoreArgs,
+			[]string{"--provider", "google", "--google-project-id", string(secretData.Data["projectID"]), "--azure-account-key", string(secretData.Data["accountKey"])}...)
+		if val, ok := secretData.Data["encryptionKey"]; ok && len(val) > 0 {
+			objectStoreArgs = append(objectStoreArgs, "--encryption-key")
+			objectStoreArgs = append(objectStoreArgs, string(val))
+		}
+	} else {
+		return fmt.Errorf("did not get either s3, azure or google secret in configmap secret-config in default namespace")
+	}
+	cmdArgs = append(cmdArgs, objectStoreArgs...)
+	logrus.Infof("Following is the bidirectional command: %v", cmdArgs)
 	if err := cmd.Execute(); err != nil {
 		return fmt.Errorf("Creation of bidirectional cluster pair using storkctl failed: %v", err)
 	}
