@@ -12,6 +12,7 @@ import (
 	"github.com/libopenstorage/stork/pkg/k8sutils"
 	"github.com/libopenstorage/stork/pkg/version"
 	"github.com/portworx/sched-ops/k8s/apiextensions"
+	"github.com/portworx/sched-ops/k8s/core"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 const (
 	validateCRDInterval time.Duration = 5 * time.Second
 	validateCRDTimeout  time.Duration = 1 * time.Minute
+	storkCreatedAnnotation            = "stork.libopenstorage.org/created-by-stork"
 )
 
 // NewClusterPair creates a new instance of ClusterPairController.
@@ -210,6 +212,7 @@ func getClusterPairSchedulerStatus(clusterPairName string, namespace string) (st
 
 func (c *ClusterPairController) cleanup(clusterPair *stork_api.ClusterPair) error {
 	skipDelete := false
+	cpNamespace := clusterPair.Namespace
 	if clusterPair.Status.RemoteStorageID != "" {
 		// verify if any other cluster pair using the same RemoteStorageID
 		cpList, err := storkops.Instance().ListClusterPairs("")
@@ -228,6 +231,24 @@ func (c *ClusterPairController) cleanup(clusterPair *stork_api.ClusterPair) erro
 	}
 	if !skipDelete && clusterPair.Status.RemoteStorageID != "" {
 		return c.volDriver.DeletePair(clusterPair)
+	}
+
+	// Delete the backuplocation and secret associated with clusterpair as part of the delete
+	if backuplocationName, ok := clusterPair.Spec.Options["backuplocation"]; ok {
+		bl, err := storkops.Instance().GetBackupLocation(backuplocationName, clusterPair.Namespace)
+		if err != nil && !errors.IsNotFound(err) {
+			logrus.Errorf("fetching backuplocation %s in ns %s failed: %v", backuplocationName, clusterPair.Namespace, err)
+		}
+		if err == nil && bl.Annotations[storkCreatedAnnotation] == "true"{
+			err := core.Instance().DeleteSecret(bl.Location.SecretConfig, bl.Namespace)
+			if err != nil && !errors.IsNotFound(err) {
+				logrus.Errorf("deleting secret %s in ns %s failed: %v", bl.Location.SecretConfig, bl.Namespace, err)
+			}
+			err = storkops.Instance().DeleteBackupLocation(bl.Name, bl.Namespace)
+			if err != nil && !errors.IsNotFound(err) {
+				logrus.Errorf("deleting backuplocation %s in ns %s failed: %v", backuplocationName, bl.Namespace, err)
+			}
+		}
 	}
 	return nil
 }
