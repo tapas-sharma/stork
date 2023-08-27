@@ -24,6 +24,7 @@ import (
 	"github.com/portworx/sched-ops/k8s/openshift"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
 	"github.com/stretchr/testify/require"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -83,6 +84,7 @@ func resetTest() {
 	apps.SetInstance(apps.New(fakeKubeClient.AppsV1(), fakeKubeClient.CoreV1()))
 	batch.SetInstance(batch.New(fakeKubeClient.BatchV1(), fakeKubeClient.BatchV1beta1()))
 	dynamic.SetInstance(dynamic.New(fakeDynamicClient))
+	apiextensionsclient.SetConfig(fakeKubeClient)
 }
 
 func testCommon(t *testing.T, cmdArgs []string, obj runtime.Object, expected string, errorExpected bool) {
