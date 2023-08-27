@@ -84,6 +84,7 @@ func resetTest() {
 	apps.SetInstance(apps.New(fakeKubeClient.AppsV1(), fakeKubeClient.CoreV1()))
 	batch.SetInstance(batch.New(fakeKubeClient.BatchV1(), fakeKubeClient.BatchV1beta1()))
 	dynamic.SetInstance(dynamic.New(fakeDynamicClient))
+	apiextensionops.SetInstance(apiextensionops.New(fc))
 	apiextensionsclient.SetConfig(fakeKubeClient)
 }
 

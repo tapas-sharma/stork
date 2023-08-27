@@ -15,6 +15,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	fakeapiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	kubernetes "k8s.io/client-go/kubernetes/fake"
 )
 
 const (
@@ -149,6 +151,11 @@ func (f *factory) UpdateConfig() error {
 	dynamicops.Instance().SetConfig(config)
 	externalstorageops.Instance().SetConfig(config)
 	apiextensionops.Instance().SetConfig(config)
+	fc := fakeapiextensionsclient.NewSimpleClientset()
+	//fakeKubeClient := kubernetes.NewSimpleClientset()
+	apiextensionops.SetInstance(apiextensionops.New(fc))
+	//discoveryClient.SetConfig
+	//core.SetInstance(core.New(fakeKubeClient))
 	return nil
 }
 
