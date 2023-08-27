@@ -10,6 +10,7 @@ import (
 	externalstorageops "github.com/portworx/sched-ops/k8s/externalstorage"
 	ocpops "github.com/portworx/sched-ops/k8s/openshift"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
+	apiextensionops "github.com/portworx/sched-ops/k8s/apiextensions"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -147,6 +148,7 @@ func (f *factory) UpdateConfig() error {
 	appsops.Instance().SetConfig(config)
 	dynamicops.Instance().SetConfig(config)
 	externalstorageops.Instance().SetConfig(config)
+	apiextensionops.Instance().SetConfig(config)
 	return nil
 }
 

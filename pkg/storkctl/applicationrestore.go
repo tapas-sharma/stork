@@ -8,6 +8,7 @@ import (
 	"time"
 
 	storkv1 "github.com/libopenstorage/stork/pkg/apis/stork/v1alpha1"
+	apiextensionops "github.com/portworx/sched-ops/k8s/apiextensions"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
 	"github.com/portworx/sched-ops/task"
 	"github.com/spf13/cobra"
@@ -293,9 +294,9 @@ func getDefaultNamespaceMapping(backup *storkv1.ApplicationBackup) map[string]st
 func getObjectInfos(resourceString string, ioStreams genericclioptions.IOStreams) []storkv1.ObjectInfo {
 	objects := make([]storkv1.ObjectInfo, 0)
 
-	discoveryClient, err := getDiscoveryClientForApiResources()
+	discoveryClient, err := apiextensionops.Instance().GetDiscoveryClient()
 	if err != nil {
-		printMsg(fmt.Sprintf("Error getting discoveryclient: %v", err), ioStreams.Out)
+		printMsg(fmt.Sprintf("Error getting discovery client: %v", err), ioStreams.Out)
 		return objects
 	}
 	// List the available API resources

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	apiextensionops "github.com/portworx/sched-ops/k8s/apiextensions"
 	storkv1 "github.com/libopenstorage/stork/pkg/apis/stork/v1alpha1"
 	storkops "github.com/portworx/sched-ops/k8s/stork"
 	"github.com/portworx/sched-ops/task"
@@ -286,9 +287,9 @@ func getResourceTypes(resourceType string, ioStreams genericclioptions.IOStreams
 	resourceList := make([]string, 0)
 	resourceTypes := strings.Split(resourceType, ",")
 
-	discoveryClient, err := getDiscoveryClientForApiResources()
+	discoveryClient, err := apiextensionops.Instance().GetDiscoveryClient()
 	if err != nil {
-		printMsg(fmt.Sprintf("Error getting discoveryclient: %v", err), ioStreams.Out)
+		printMsg(fmt.Sprintf("Error getting discovery client: %v", err), ioStreams.Out)
 		return resourceList
 	}
 	// List the available API resources

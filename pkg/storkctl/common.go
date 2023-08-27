@@ -3,6 +3,7 @@ package storkctl
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -29,24 +30,11 @@ func printMsg(msg string, out io.Writer) {
 	}
 }
 
-func getDiscoveryClientForApiResources() (discovery.DiscoveryInterface, error) {
-	tempFactory := NewFactory()
-	config, err := tempFactory.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	aeclient, err := apiextensionsclient.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error getting apiextension client, %v", err)
-	}
-
-	return aeclient.Discovery(), nil
-}
-
 func isValidResourceType(resourceType string, apiResource metav1.APIResource) bool {
-	if resourceType == apiResource.Name ||
-		resourceType == apiResource.Kind ||
-		resourceType == apiResource.SingularName ||
+	resourceType = strings.ToLower(resourceType)
+	if resourceType == strings.ToLower(apiResource.Name) ||
+		resourceType == strings.ToLower(apiResource.Kind) ||
+		resourceType == strings.ToLower(apiResource.SingularName) ||
 		slices.Contains(apiResource.ShortNames, resourceType) {
 		return true
 	}
