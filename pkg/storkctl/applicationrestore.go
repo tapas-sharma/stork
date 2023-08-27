@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	storkv1 "github.com/libopenstorage/stork/pkg/apis/stork/v1alpha1"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metav1beta1 "k8s.io/apimachinery/pkg/apis/meta/v1beta1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubernetes/pkg/printers"
@@ -32,6 +34,7 @@ func newCreateApplicationRestoreCommand(cmdFactory Factory, ioStreams genericcli
 	var waitForCompletion bool
 	var backupName string
 	var replacePolicy string
+	var resources string
 
 	createApplicationRestoreCommand := &cobra.Command{
 		Use:     applicationRestoreSubcommand,
@@ -51,6 +54,12 @@ func newCreateApplicationRestoreCommand(cmdFactory Factory, ioStreams genericcli
 				return
 			}
 
+			backup, err := storkops.Instance().GetApplicationBackup(backupName, cmdFactory.GetNamespace())
+			if err != nil {
+				util.CheckErr(fmt.Errorf("applicationbackup %s does not exist in namespace %s", backupName, cmdFactory.GetNamespace()))
+				return
+			}
+
 			applicationRestoreName = args[0]
 			applicationRestore := &storkv1.ApplicationRestore{
 				Spec: storkv1.ApplicationRestoreSpec{
@@ -59,9 +68,15 @@ func newCreateApplicationRestoreCommand(cmdFactory Factory, ioStreams genericcli
 					ReplacePolicy:  storkv1.ApplicationRestoreReplacePolicyType(replacePolicy),
 				},
 			}
+			if len(resources) > 0 {
+				objects := getObjectInfos(resources, ioStreams)
+				applicationRestore.Spec.IncludeResources = objects
+			}
+
+			applicationRestore.Spec.NamespaceMapping = getDefaultNamespaceMapping(backup)
 			applicationRestore.Name = applicationRestoreName
 			applicationRestore.Namespace = cmdFactory.GetNamespace()
-			_, err := storkops.Instance().CreateApplicationRestore(applicationRestore)
+			_, err = storkops.Instance().CreateApplicationRestore(applicationRestore)
 			if err != nil {
 				util.CheckErr(err)
 				return
@@ -84,6 +99,8 @@ func newCreateApplicationRestoreCommand(cmdFactory Factory, ioStreams genericcli
 	createApplicationRestoreCommand.Flags().StringVarP(&backupLocation, "backupLocation", "l", "", "BackupLocation to use for the restore")
 	createApplicationRestoreCommand.Flags().StringVarP(&backupName, "backupName", "b", "", "Backup to restore from")
 	createApplicationRestoreCommand.Flags().StringVarP(&replacePolicy, "replacePolicy", "r", "Retain", "Policy to use if resources being restored already exist (Retain or Delete).")
+	createApplicationRestoreCommand.Flags().StringVarP(&resources, "resources", "", "",
+		"Specific resources for restoring, should be given in format \"<kind>/<namespace>/<name>,<kind>/<namespace>/<name>,<kind>/<name>\", ex: \"<Deployment>/<ns1>/<dep1>,<PersistentVolumeClaim>/<ns1>/<pvc1>,<ClusterRole>/<clusterrole1>\"")
 
 	return createApplicationRestoreCommand
 }
@@ -263,4 +280,74 @@ func waitForApplicationRestore(name, namespace string, ioStreams genericclioptio
 	}
 
 	return msg, err
+}
+
+func getDefaultNamespaceMapping(backup *storkv1.ApplicationBackup) map[string]string {
+	nsMapping := make(map[string]string)
+	for _, ns := range backup.Spec.Namespaces {
+		nsMapping[ns] = ns
+	}
+	return nsMapping
+}
+
+func getObjectInfos(resourceString string, ioStreams genericclioptions.IOStreams) []storkv1.ObjectInfo {
+	objects := make([]storkv1.ObjectInfo, 0)
+
+	discoveryClient, err := getDiscoveryClientForApiResources()
+	if err != nil {
+		printMsg(fmt.Sprintf("Error getting discoveryclient: %v", err), ioStreams.Out)
+		return objects
+	}
+	// List the available API resources
+	apiResourceList, err := discoveryClient.ServerPreferredResources()
+	if err != nil {
+		msg := fmt.Sprintf("Error getting API resources: %v", err)
+		printMsg(msg, ioStreams.Out)
+		return objects
+	}
+
+	resources := strings.Split(resourceString, ",")
+	for _, resource := range resources {
+		// resources will be provided like "<type>/<ns>/<name>,<type>/<name>"
+		resourceDetails := strings.Split(resource, "/")
+		object := storkv1.ObjectInfo{}
+		if len(resourceDetails) == 3 {
+			object.Name = resourceDetails[2]
+			object.Namespace = resourceDetails[1]
+		} else if len(resourceDetails) == 2 {
+			object.Name = resourceDetails[1]
+		} else {
+			msg := fmt.Sprintf("Unsupported resource info %s", resource)
+			printMsg(msg, ioStreams.Out)
+			continue
+		}
+
+		resourceType := resourceDetails[0]
+		found := false
+		for _, group := range apiResourceList {
+			groupVersion, err := schema.ParseGroupVersion(group.GroupVersion)
+			if err != nil {
+				continue
+			}
+			for _, apiResource := range group.APIResources {
+				if isValidResourceType(resourceType, apiResource) {
+					// valid input
+					object.Kind = apiResource.Kind
+					object.Version = groupVersion.Version
+					object.Group = groupVersion.Group
+					objects = append(objects, object)
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			msg := fmt.Sprintf("Error getting resource type for input resourcetype: %s", resourceType)
+			printMsg(msg, ioStreams.Out)
+		}
+	}
+	return objects
 }
