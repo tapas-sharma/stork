@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	discovery "k8s.io/client-go/discovery"
+	"k8s.io/utils/strings/slices"
 )
 
 func toTimeString(t time.Time) string {
@@ -22,4 +27,28 @@ func printMsg(msg string, out io.Writer) {
 	if _, printErr := fmt.Fprintln(out, msg); printErr != nil {
 		fmt.Println(msg)
 	}
+}
+
+func getDiscoveryClientForApiResources() (discovery.DiscoveryInterface, error) {
+	tempFactory := NewFactory()
+	config, err := tempFactory.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	aeclient, err := apiextensionsclient.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error getting apiextension client, %v", err)
+	}
+
+	return aeclient.Discovery(), nil
+}
+
+func isValidResourceType(resourceType string, apiResource metav1.APIResource) bool {
+	if resourceType == apiResource.Name ||
+		resourceType == apiResource.Kind ||
+		resourceType == apiResource.SingularName ||
+		slices.Contains(apiResource.ShortNames, resourceType) {
+		return true
+	}
+	return false
 }
