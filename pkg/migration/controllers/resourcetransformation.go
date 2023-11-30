@@ -154,9 +154,6 @@ func (r *ResourceTransformationController) validateSpecPath(transform *stork_api
 		if err != nil {
 			return err
 		}
-		if !resourcecollector.GetSupportedK8SResources(kind, []string{}) {
-			return fmt.Errorf("unsupported resource kind for transformation: %s", kind)
-		}
 		for _, path := range spec.Paths {
 			// TODO: this can be validated via CRDs as well, when we have defined schema
 			// for stork crds
